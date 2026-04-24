@@ -5,6 +5,18 @@
 # COMMON IMPORTS
 #
 
+# Jaco sets for photon/pi0 reconstruction
+# --calibrateClusters set default true
+# --doSWClustering set default false: working with topo clusters only
+# drop tracking hits and muons
+# addShapeParameters = False: not needed in GATr training
+# leaving endcap hits and clusters in output for possible studies (but Zhibo selected angle of generated particles to be in barrel)
+# --saveCells set default false
+# docreateclustercellcollection = false,  not need to create a new collection with clustered cells
+# clusteringThreshold of topo = 0.15 (as Zhibo)
+# addPi0RecoTool = True
+# addShapeParameters = True
+
 # Logger
 from Gaudi.Configuration import INFO, DEBUG, VERBOSE, ERROR
 # units and physical constants
@@ -15,13 +27,16 @@ from GaudiKernel.PhysicalConstants import pi
 #
 
 # - default settings, that can be overridden via CLI
-inputfile = "ALLEGRO_sim.root"             # input file produced with ddsim - can be overridden with IOSvc.Input
-outputfile = "ALLEGRO_sim_digi_reco.root"  # output file produced by this steering file - can be overridden with IOSvc.Output
+inputfile = [f"/eos/home-j/jfanini/data/sim/pi0/sim_ALLEGRO_ZH240_pi0_{i}.root" 
+             for i in range (1, 101) #first included, last excluded
+            ]            # input file produced with ddsim - can be overridden with IOSvc.Input
+outputfile = "reco_ALLEGRO_ZH240_pi0_1.root"  # output file produced by this steering file - can be overridden with IOSvc.Output
 Nevts = -1                                 # -1 means all events in input file (can be overridden with -n or --num-events option of k4run
 dataFolderDef = "./"                       # directory containing the calibration files
 
 # - general settings not set via CLI
 filterNoiseThreshold = -1                  # if addNoise is true, and filterNoiseThreshold is >0, will filter away cells with abs(energy) below filterNoiseThreshold * expected sigma(noise)
+# dataFolder = "data/"                     # directory containing the calibration files
 
 # - general settings set via CLI
 from k4FWCore.parseArgs import parser
@@ -39,14 +54,14 @@ parser.add_argument("--dataFolder", type=str, help="Path to calibration data fol
 parser.add_argument("--includeHCal", type=str2bool, nargs="?", help="Also digitize HCal hits and create ECAL+HCAL clusters", const=True, default=False)
 parser.add_argument("--includeMuon", type=str2bool, nargs="?", help="Also digitize muon hits", const=True, default=False)
 parser.add_argument("--saveHits", type=str2bool, nargs="?", help="Save G4 hits", const=True, default=False)
-parser.add_argument("--saveCells", type=str2bool, nargs="?", help="Save cell collection", const=True, default=False)
+parser.add_argument("--saveCells", type=str2bool, nargs="?", help="Save cell collection", const=True, default=True)
 parser.add_argument("--addNoise", type=str2bool, nargs="?", help="Add noise to cells (ECAL barrel only)", const=True, default=False)
 parser.add_argument("--addCrosstalk", type=str2bool, nargs="?", help="Add cross-talk to cells (ECAL barrel only)", const=True, default=False)
 parser.add_argument("--addTracks", type=str2bool, nargs="?", help="Add reco-level tracks (smeared truth tracks)", const=True, default=False)
-parser.add_argument("--doSWClustering", type=str2bool, nargs="?", help="Enable or disable sliding window clustering", const=True, default=True)
+parser.add_argument("--doSWClustering", type=str2bool, nargs="?", help="Enable or disable sliding window clustering", const=True, default=False)
 parser.add_argument("--createClusterCellCollections", type=str2bool, nargs="?", help="Create new cluster cell collections or just link clusters to cells in standard cell collections", const=True, default=True)
 parser.add_argument("--doTopoClustering", type=str2bool, nargs="?", help="Enable or disable topo clustering", const=True, default=True)
-parser.add_argument("--calibrateClusters", type=str2bool, nargs="?", help="Apply MVA calibration to clusters", const=True, default=False)
+parser.add_argument("--calibrateClusters", type=str2bool, nargs="?", help="Apply MVA calibration to clusters", const=True, default=True)
 parser.add_argument("--reconstructPi0s", type=str2bool, nargs="?", help="Search for cluster pairs consistent with the pi0 hypothesis", const=True, default=True)
 parser.add_argument("--runPhotonID", type=str2bool, nargs="?", help="Apply photon ID tool to clusters", const=True, default=False)
 parser.add_argument("--runTrkHitDigitization", type=str2bool, nargs="?", help="Digitize tracker hits", const=True, default=False)
@@ -54,7 +69,8 @@ parser.add_argument("--useLegacyVTXDigitizer", type=str2bool, nargs="?", help="P
 parser.add_argument("--runTrkFinder", type=str2bool, nargs="?", help="Run Geometric Graph Track Finding (GGTF) on digitized tracker hits", const=True, default=False)
 
 opts = parser.parse_known_args()[0]
-dataFolder = opts.dataFolder                        # directory containing the calibration files
+#dataFolder = opts.dataFolder                        # directory containing the calibration files
+dataFolder = "/afs/cern.ch/work/j/jfanini/public/photon-pi0/jaco/reco-files/"                          # directory containing the calibration files
 runHCal = opts.includeHCal                          # if false, it will produce only ECAL clusters. if true, it will also produce ECAL+HCAL clusters
 runMuon = opts.includeMuon                          # if false, it will not digitize muon hits
 addNoise = opts.addNoise                            # add noise or not to the cell energy
@@ -64,11 +80,12 @@ runTrkHitDigitization = opts.runTrkHitDigitization    # digitize tracker hits (D
 useLegacyVTXDigitizer = opts.useLegacyVTXDigitizer   # digitize tracker hits (VTXdigitizer, smear truth)
 runTrkFinder = opts.runTrkFinder                    # run GGTF on digitized tracker hits
 
+
 # - what to save in output file
 #
 # always drop uncalibrated cells, except for tests and debugging
-dropUncalibratedCells = True
-# dropUncalibratedCells = False
+#dropUncalibratedCells = True
+dropUncalibratedCells = False  # to debug
 
 # for big productions, save significant space removing hits and cells
 # however, hits and cluster cells might be wanted for small productions for detailed event displays
@@ -80,14 +97,14 @@ saveClusterCells = True
 dropLumiCalHits = True
 
 # for tracker hits there is a single hit/readout cell so not much gain by dropping them, especially if the corresponding digitized cells (smeared hits) have not been added to output
-# dropVertexHits = True
-# dropDCHHits = True
-# dropSiWrHits = True
-# dropMuonHits = True
-dropVertexHits = False
-dropDCHHits = False
-dropSiWrHits = False
-dropMuonHits = False
+dropVertexHits = True
+dropDCHHits = True
+dropSiWrHits = True
+dropMuonHits = True
+# dropVertexHits = False
+# dropDCHHits = False
+# dropSiWrHits = False
+# dropMuonHits = False
 
 
 # ECAL barrel parameters for digitization
@@ -137,7 +154,7 @@ applyUpDownstreamCorrections = False
 applyMVAClusterEnergyCalibration = opts.calibrateClusters
 
 # calculate cluster energy and barycenter per layer and save it as extra parameters
-addShapeParameters = True
+addShapeParameters = True # false for GATr training dataset!! (but might need it to use Pi0RecoTool)
 ecalBarrelThetaWeights = [-1, 3.0, 3.0, 3.0, 4.25, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0]  # to be recalculated for V03, separately for topo and calo clusters...
 
 # run photon ID algorithm
@@ -1236,7 +1253,7 @@ if doTopoClustering:
     setupTopoClusters(EMBCaloTopoClusterInputs,
                       EMBCaloTopoClusterReadouts,
                       "EMBCaloTopoClusters",
-                      0.0,
+                      0.15, #ClusteringThreshold as in Zhibo study
                       dataFolder + "neighbours_map_ecalB_thetamodulemerged.root",
                       dataFolder + "cellNoise_map_electronicsNoiseLevel_ecalB_thetamodulemerged.root",
                       applyUpDownstreamCorrections,
@@ -1400,4 +1417,4 @@ applicationMgr = ApplicationMgr(
 for algo in applicationMgr.TopAlg:
     algo.AuditExecute = True
     # for debug
-    # algo.OutputLevel = DEBUG
+    #algo.OutputLevel = DEBUG
